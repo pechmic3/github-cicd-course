@@ -7,13 +7,34 @@ on:
         description: 'Message'
         required: true
         default: 'Hello CI/CD'
-      # TODO: add tag input
+      tag:
+        description: 'Docker image tag'
+        required: true
+        default: 'latest'
 permissions:
   contents: read
   packages: write
 
 jobs:
+  test:
+    runs-on: "ubuntu-latest"
+    name: Build (dry run)
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+      - name: Replace message in index.hml
+        run: sed -i "s#DEFAULT_MESSAGE#${{ inputs.message }}#" ./task_b/index.html
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./task_b
+          push: false
+          tags: ghcr.io/${{ github.repository }}:${{ inputs.tag }}
+
   docker:
+    needs: test
     runs-on: "ubuntu-latest"
     name: Docker build
     steps:
@@ -34,6 +55,13 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
-          tags: type=ref,event=tag
-      # TODO: build and push docker image
-  # TODO: Add test job
+          tags: |
+            type=raw,value=${{ inputs.tag }}
+            type=ref,event=tag
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./task_b
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
